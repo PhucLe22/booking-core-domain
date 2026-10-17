@@ -55,3 +55,7 @@ docker compose -f docker-compose.production.yml -p pms_prod up -d
 ```
 python3 -m grpc_tools.protoc --proto_path=/usr/src/service/ --python_out=/usr/src/service/ --grpc_python_out=/usr/src/service/ /usr/src/service/core/grpc/notification.proto
 ```
+
+demo user
+admin@finepro.net
+Adminf@123# booking-core-domain
