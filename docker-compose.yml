@@ -10,6 +10,7 @@ services:
       - ./app:/usr/src/service/app
       - ./core:/usr/src/service/core
       - ./services/user/apis:/usr/src/service/apis
+      - ./services/user/.env:/usr/src/service/.env
       - static_volume:/usr/src/service/static
       - media_volume:/usr/src/service/media
       - ./services/user/pyproject.toml:/usr/src/service/pyproject.toml
@@ -24,7 +25,7 @@ services:
     networks:
       - redis_network
       - dbnetwork
-    
+
   notification_service:
     build:
       context: ./services/notification
@@ -34,6 +35,7 @@ services:
       - ./app:/usr/src/service/app
       - ./core:/usr/src/service/core
       - ./services/notification/apis:/usr/src/service/apis
+      - ./services/notification/.env:/usr/src/service/.env
       - static_volume:/usr/src/service/static
       - media_volume:/usr/src/service/media
       - ./services/notification/pyproject.toml:/usr/src/service/pyproject.toml
@@ -46,7 +48,98 @@ services:
     networks:
       - redis_network
       - dbnetwork
-  
+
+  resource_service:
+    build:
+      context: ./services/resource
+      dockerfile: Dockerfile
+    command: uvicorn app.asgi:application --host 0.0.0.0 --port 8000 --reload --log-level info
+    volumes:
+      - ./app:/usr/src/service/app
+      - ./core:/usr/src/service/core
+      - ./services/resource/apis:/usr/src/service/apis
+      - ./services/resource/.env:/usr/src/service/.env
+      - static_volume:/usr/src/service/static
+      - media_volume:/usr/src/service/media
+      - ./services/resource/pyproject.toml:/usr/src/service/pyproject.toml
+      - ./services/resource/poetry.lock:/usr/src/service/poetry.lock
+    ports:
+      - 9014:8000
+    depends_on:
+      - db
+      - redis
+    networks:
+      - redis_network
+      - dbnetwork
+
+  booking_service:
+    build:
+      context: ./services/booking
+      dockerfile: Dockerfile
+    command: uvicorn app.asgi:application --host 0.0.0.0 --port 8000 --reload --log-level info
+    volumes:
+      - ./app:/usr/src/service/app
+      - ./core:/usr/src/service/core
+      - ./services/booking/apis:/usr/src/service/apis
+      - ./services/booking/.env:/usr/src/service/.env
+      - static_volume:/usr/src/service/static
+      - media_volume:/usr/src/service/media
+      - ./services/booking/pyproject.toml:/usr/src/service/pyproject.toml
+      - ./services/booking/poetry.lock:/usr/src/service/poetry.lock
+    ports:
+      - 9015:8000
+    depends_on:
+      - db
+      - redis
+    networks:
+      - redis_network
+      - dbnetwork
+
+  storage_service:
+    build:
+      context: ./services/storage
+      dockerfile: Dockerfile
+    command: uvicorn app.asgi:application --host 0.0.0.0 --port 8000 --reload --log-level info
+    volumes:
+      - ./app:/usr/src/service/app
+      - ./core:/usr/src/service/core
+      - ./services/storage/apis:/usr/src/service/apis
+      - ./services/storage/.env:/usr/src/service/.env
+      - static_volume:/usr/src/service/static
+      - ./services/storage/pyproject.toml:/usr/src/service/pyproject.toml
+      - ./services/storage/poetry.lock:/usr/src/service/poetry.lock
+    ports:
+      - 9016:8000
+    depends_on:
+      - db
+      - redis
+    networks:
+      - redis_network
+      - dbnetwork
+
+  master_data_service:
+    build:
+      context: ./services/master-data
+      dockerfile: Dockerfile
+    command: uvicorn app.asgi:application --host 0.0.0.0 --port 8000 --reload --log-level info
+    volumes:
+      - ./app:/usr/src/service/app
+      - ./core:/usr/src/service/core
+      - ./services/master-data/apis:/usr/src/service/apis
+      - ./services/master-data/.env:/usr/src/service/.env
+      - static_volume:/usr/src/service/static
+      - media_volume:/usr/src/service/media
+      - ./services/master-data/pyproject.toml:/usr/src/service/pyproject.toml
+      - ./services/master-data/poetry.lock:/usr/src/service/poetry.lock
+    ports:
+      - 9017:8000
+    depends_on:
+      - db
+      - redis
+    networks:
+      - redis_network
+      - dbnetwork
+
   apschedule:
     build:
       context: ./services/apschedule
@@ -82,6 +175,7 @@ services:
     command: celery -A app.celery worker --loglevel=info
     volumes:
       - ./services/celery/app:/usr/src/service/app
+      - ./services/celery/.env:/usr/src/service/.env
       - ./core:/usr/src/service/core
     depends_on:
       - redis
@@ -117,6 +211,8 @@ services:
       - "${FORWARD_PORT}:80"
     depends_on:
       - user_service
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     networks:
       - nginx_network
 
@@ -147,4 +243,3 @@ networks:
     driver: bridge
   dbnetwork:
     driver: bridge
-

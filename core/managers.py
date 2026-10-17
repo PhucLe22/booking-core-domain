@@ -1,4 +1,6 @@
 from django.contrib.auth.models import BaseUserManager
+from core.constant import RoleCode
+
 from .querysets import UserQuerySet
 
 
@@ -15,9 +17,9 @@ class SoftDeleteUserManager(BaseUserManager):
         return user
 
     def create_superuser(self, username, password=None, **extra_fields):
-        extra_fields.setdefault("role", 1)
-
-        return self.create_user(username, password, **extra_fields)
+        user = self.create_user(username, password, **extra_fields)
+        user.assign_role(RoleCode.ADMIN)
+        return user
 
 
 class GlobalUserManager(BaseUserManager):

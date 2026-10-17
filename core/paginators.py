@@ -13,11 +13,12 @@ class CustomPaginator(pagination.PageNumberPagination):
     def get_previous_link(self):
         return super().get_previous_link()
 
-    def get_paginated_response(self, data):
+    def get_paginated_response(self, data, message=""):
 
         return Response({
             "status" : True,
             "data": data,
+            "message": message,
             "pagination": {
                 "total_items": self.page.paginator.count,
                 "page_size": self.get_page_size(self.request),

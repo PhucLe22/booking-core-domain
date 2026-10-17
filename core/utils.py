@@ -15,13 +15,26 @@ from rest_framework.response import Response
 from core.constant import DIR_TO_UPLOAD_MAPPER, PERMISSIONS_LIST, UI_PERMISSION_MAPPING
 
 
-def response_errors(errors):
-    error_message = next(iter(errors.values()))[0]
-    if isinstance(error_message, list):
-        error_message = error_message[0]
+def response_success(data=None, message="", status_code=status.HTTP_200_OK):
     return Response(
-        {"status": False, "message": error_message},
-        status=status.HTTP_400_BAD_REQUEST,
+        {
+            "status": True,
+            "data": data if data is not None else {},
+            "message": message,
+        },
+        status=status_code,
+    )
+
+
+def response_errors(errors, status_code=status.HTTP_400_BAD_REQUEST):
+    # data keeps the full per-field errors, message is the first one for display
+    return Response(
+        {
+            "status": False,
+            "data": errors,
+            "message": extract_first_error_message(errors),
+        },
+        status=status_code,
     )
 
 
@@ -242,13 +255,16 @@ def fix_vector(vector, dim=10000):
 
 def check_ui_permission(user, ui_permission_key):
     """
-    Kiểm tra xem người dùng có quyền UI cụ thể không
+    Check whether the user has a specific UI permission
+    (UI_PERMISSION_MAPPING maps a UI key to a Permission code).
     """
     if ui_permission_key not in UI_PERMISSION_MAPPING:
         return False
 
-    backend_perm_value = UI_PERMISSION_MAPPING[ui_permission_key]
-    return check_permissions_by_hex(user.role.permissions, backend_perm_value)
+    permission_code = UI_PERMISSION_MAPPING[ui_permission_key]
+    return user.roles.filter(
+        is_active=True, permissions__code=permission_code
+    ).exists()
 
 
 def get_access_token_from_request(request):

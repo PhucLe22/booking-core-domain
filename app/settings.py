@@ -79,6 +79,18 @@ REST_FRAMEWORK = {
     "DEFAULT_FILTER_BACKENDS": ("django_filters.rest_framework.DjangoFilterBackend",),
     "COERCE_DECIMAL_TO_STRING": False,
 }
+#No auth
+# REST_FRAMEWORK = {
+#     "DEFAULT_AUTHENTICATION_CLASSES": (),
+#     "DEFAULT_PERMISSION_CLASSES": (
+#         "rest_framework.permissions.AllowAny",
+#     ),
+#     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+#     "EXCEPTION_HANDLER": "core.exceptions.custom_exception_handler",
+#     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+#     "DEFAULT_FILTER_BACKENDS": ("django_filters.rest_framework.DjangoFilterBackend",),
+#     "COERCE_DECIMAL_TO_STRING": False,
+# }
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
@@ -265,5 +277,10 @@ CHANNEL_LAYERS = {
 # APPEND_SLASH = False
 MEDIA_URL = "/media/"
 MEDIA_ROOT = os.path.join(BASE_DIR, "media")
+
+# files of the storage service (StorageConfig LOCAL) live in the media folder
+# of the storage_service container (its own storage_volume) and are served by it
+STORAGE_ROOT = MEDIA_ROOT
+STORAGE_URL = "/api/v1/media/"
 
 SIMPLE_HISTORY_HISTORY_CHANGE_REASON_USE_TEXT_FIELD = True
