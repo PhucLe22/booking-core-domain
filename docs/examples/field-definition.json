@@ -1,0 +1,57 @@
+{
+  "resourceType": "meeting_room",
+  "version": 3,
+  "fields": [
+    {
+      "key": "capacity",
+      "label": "Capacity",
+      "type": "integer",
+      "scope": "resource",
+      "required": true,
+      "validation": { "min": 1, "max": 200 }
+    },
+    {
+      "key": "floor",
+      "label": "Floor",
+      "type": "text",
+      "scope": "resource",
+      "validation": { "maxLength": 3, "pattern": "^[0-9]{1,2}[A-Z]?$" },
+      "help": "e.g. 3 or 12B"
+    },
+    {
+      "key": "equipment",
+      "label": "Equipment",
+      "type": "multi_select",
+      "scope": "resource",
+      "options": [
+        { "value": "tv", "label": "TV" },
+        { "value": "whiteboard", "label": "Whiteboard" },
+        { "value": "video_conf", "label": "Video conferencing" }
+      ],
+      "validation": { "maxItems": 3 }
+    },
+    {
+      "key": "attendee_count",
+      "label": "Number of attendees",
+      "type": "integer",
+      "scope": "booking",
+      "required": true,
+      "validation": { "min": 1, "max": 200 }
+    },
+    {
+      "key": "primary_table",
+      "label": "Primary table",
+      "type": "reference",
+      "scope": "resource",
+      "validation": { "targetResourceTypeId": "0193f4c2-7a3b-7c3e-8e2a-1f9b6c5d4e3a" }
+    }
+  ],
+  "rules": [
+    {
+      "id": "video_conf_capacity",
+      "message": "Rooms with video conferencing need a capacity of at least 4",
+      "when": { "in": ["video_conf", { "var": "equipment" }] },
+      "assert": { ">=": [{ "var": "capacity" }, 4] }
+    }
+  ]
+}

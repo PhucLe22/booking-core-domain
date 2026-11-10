@@ -1,0 +1,6 @@
+# Save as .npmrc in the product repo.
+# gitlab.example.com and <group-id> stand for our GitLab instance and group.
+# Locally, NPM_TOKEN is a personal access token with read_api.
+# In CI, use a group deploy token stored as a masked CI/CD variable.
+@booking-core:registry=https://gitlab.example.com/api/v4/groups/<group-id>/-/packages/npm/
+//gitlab.example.com/api/v4/groups/<group-id>/-/packages/npm/:_authToken=${NPM_TOKEN}

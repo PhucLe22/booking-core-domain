@@ -1,0 +1,9 @@
+{
+  "payment": {
+    "mode": "upfront",
+    "chargeOn": "submit",
+    "method": "authorize_then_capture",
+    "onReject": "release",
+    "onCancel": { "refund": "per_cancellation_policy" }
+  }
+}

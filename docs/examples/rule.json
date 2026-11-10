@@ -1,0 +1,13 @@
+{
+  "id": "guests-max-2h",
+  "name": "Guests book at most 2 hours",
+  "scope": { "resourceType": "meeting_room" },
+  "stage": "limits",
+  "priority": 10,
+  "when": {
+    "and": [
+      { "in": ["guest", { "var": "user.groups" }] },
+      { ">": [{ "var": "booking.durationMinutes" }, 120] }
+    ]
+  }
+}

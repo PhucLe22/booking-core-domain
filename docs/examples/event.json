@@ -1,0 +1,11 @@
+{
+  "id": "0193f4d8-7a10-7c2e-9b1f-5e2a4c8d1f07",
+  "name": "booking.confirmed",
+  "version": 1,
+  "tenantId": "0193f4c2-1b3a-7d4e-8f21-6a9c0e5b2d14",
+  "subject": { "type": "booking", "id": "0193f4d5-2c8e-7f1a-a3b4-9d0e6f7a8b21" },
+  "actor": { "type": "user", "id": "0193f4c9-4e7b-7a2d-8c15-3b6f9e0a1d42" },
+  "occurredAt": "2026-12-15T07:02:11Z",
+  "changes": { "status": { "from": "pending_approval", "to": "confirmed" } },
+  "configVersions": { "flowConfig": 4, "ruleSet": 12 }
+}

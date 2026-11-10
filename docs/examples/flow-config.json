@@ -1,0 +1,6 @@
+{
+  "confirmation": "instant",
+  "checkIn": { "required": true, "opensMinutesBefore": 15, "noShowAfterMinutes": 15 },
+  "cancellation": { "allowedUntilMinutesBefore": 60 },
+  "payment": { "mode": "none" }
+}

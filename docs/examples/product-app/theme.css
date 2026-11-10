@@ -1,0 +1,7 @@
+/* Core base styles first, then the product's brand on top of the theme tokens. */
+@import "@booking-core/ui/styles.css";
+
+:root {
+  --primary: 160 84% 30%;
+  --radius: 0.75rem;
+}

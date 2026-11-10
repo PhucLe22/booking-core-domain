@@ -1,0 +1,10 @@
+{
+  "type": "https://errors.bookingcore.dev/booking-denied",
+  "title": "Booking not allowed",
+  "status": 422,
+  "code": "BOOKING_DENIED",
+  "reasons": [
+    { "ruleId": "guests-max-2h", "message": "Guests can book at most 2 hours" }
+  ],
+  "errors": []
+}
