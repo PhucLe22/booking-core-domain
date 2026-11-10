@@ -6,7 +6,7 @@ from core.constant import EXCLUDE_ACTIVE_PATH
 from core.utils import path_is_excluded
 
 
-class ActiveAccountMiddleware(BasePermission):
+class IsActiveAccount(BasePermission):
     def has_permission(self, request: Request, view):
         current_route = request.resolver_match.route
         if path_is_excluded(current_route, EXCLUDE_ACTIVE_PATH) or request.user.status:

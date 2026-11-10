@@ -11,8 +11,8 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from core.filters import UserFilter
 from core.jwt import MyTokenObtainPairSerializer
-from core.middlewares.login_required import LOGIN_REQUIRED
-from core.middlewares.staff import AdminMiddleware, StaffMiddleware
+from core.permissions.login_required import LOGIN_REQUIRED
+from core.permissions.roles import IsAdmin, IsStaff
 from core.models import Permission, Role, User
 from core.paginators import CustomPaginator
 from core.serializers.role_serializers import PermissionSerializer, RoleSerializer
@@ -105,7 +105,6 @@ class AuthenViewSet(viewsets.ViewSet):
         detail=False,
         url_path="logout",
         authentication_classes=[JWTAuthentication],
-        permission_classes=LOGIN_REQUIRED,
     )
     def logout_user(self, request):
         try:
@@ -123,7 +122,6 @@ class AuthenViewSet(viewsets.ViewSet):
         detail=False,
         url_path="me",
         authentication_classes=[JWTAuthentication],
-        permission_classes=LOGIN_REQUIRED,
     )
     def me(self, request):
         if request.method == "GET":
@@ -145,7 +143,6 @@ class AuthenViewSet(viewsets.ViewSet):
         detail=False,
         url_path="change_password",
         authentication_classes=[JWTAuthentication],
-        permission_classes=LOGIN_REQUIRED,
     )
     def change_password(self, request):
         user = request.user
@@ -193,8 +190,8 @@ class UserViewSet(viewsets.ViewSet):
 
     def get_permissions(self):
         if self.action in ["list", "retrieve"]:
-            return [cls() for cls in [*LOGIN_REQUIRED, StaffMiddleware]]
-        return [cls() for cls in [*LOGIN_REQUIRED, AdminMiddleware]]
+            return [cls() for cls in [*LOGIN_REQUIRED, IsStaff]]
+        return [cls() for cls in [*LOGIN_REQUIRED, IsAdmin]]
 
     @extend_schema(**list_users_document)
     def list(self, request):
@@ -257,7 +254,7 @@ class UserViewSet(viewsets.ViewSet):
 
 class RoleViewSet(viewsets.ViewSet):
     authentication_classes = [JWTAuthentication]
-    permission_classes = [*LOGIN_REQUIRED, AdminMiddleware]
+    permission_classes = [*LOGIN_REQUIRED, IsAdmin]
 
     @extend_schema(**list_roles_document)
     def list(self, request):
@@ -303,7 +300,7 @@ class RoleViewSet(viewsets.ViewSet):
 
 class PermissionViewSet(viewsets.ViewSet):
     authentication_classes = [JWTAuthentication]
-    permission_classes = [*LOGIN_REQUIRED, AdminMiddleware]
+    permission_classes = [*LOGIN_REQUIRED, IsAdmin]
 
     @extend_schema(**list_permissions_document)
     def list(self, request):

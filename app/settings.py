@@ -69,9 +69,9 @@ REST_FRAMEWORK = {
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": (
-        "core.middlewares.authenticate.AuthenticateMiddleware",
-        "core.middlewares.active_account.ActiveAccountMiddleware",
-        "core.middlewares.check_token_version.TokenVersionMiddleware",
+        "core.permissions.authenticate.IsLoggedIn",
+        "core.permissions.active_account.IsActiveAccount",
+        "core.permissions.check_token_version.HasValidTokenVersion",
     ),
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "EXCEPTION_HANDLER": "core.exceptions.custom_exception_handler",

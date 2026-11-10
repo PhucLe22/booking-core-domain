@@ -10,8 +10,8 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from core.constant import STAFF_ROLE_CODES
 from core.filters import FileAttachmentFilter, FolderFilter, StoredFileFilter
-from core.middlewares.login_required import LOGIN_REQUIRED
-from core.middlewares.staff import AdminMiddleware
+from core.permissions.login_required import LOGIN_REQUIRED
+from core.permissions.roles import IsAdmin
 from core.models import FileAttachment, Folder, StorageConfig, StoredFile
 from core.paginators import CustomPaginator
 from core.serializers.storage_serializers import (
@@ -101,7 +101,7 @@ class OwnedObjectsMixin:
 
 class StorageConfigViewSet(viewsets.ViewSet):
     authentication_classes = [JWTAuthentication]
-    permission_classes = [*LOGIN_REQUIRED, AdminMiddleware]
+    permission_classes = [*LOGIN_REQUIRED, IsAdmin]
 
     @extend_schema(**list_storage_configs_document)
     def list(self, request):
@@ -149,7 +149,6 @@ class StorageConfigViewSet(viewsets.ViewSet):
 
 class FolderViewSet(OwnedObjectsMixin, viewsets.ViewSet):
     authentication_classes = [JWTAuthentication]
-    permission_classes = LOGIN_REQUIRED
     owner_field = "created_by"
 
     @extend_schema(**list_folders_document)
@@ -207,7 +206,6 @@ class FolderViewSet(OwnedObjectsMixin, viewsets.ViewSet):
 
 class StoredFileViewSet(OwnedObjectsMixin, viewsets.ViewSet):
     authentication_classes = [JWTAuthentication]
-    permission_classes = LOGIN_REQUIRED
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     owner_field = "uploaded_by"
 
@@ -297,7 +295,6 @@ class StoredFileViewSet(OwnedObjectsMixin, viewsets.ViewSet):
 
 class FileAttachmentViewSet(OwnedObjectsMixin, viewsets.ViewSet):
     authentication_classes = [JWTAuthentication]
-    permission_classes = LOGIN_REQUIRED
     owner_field = "file__uploaded_by"
 
     def can_access_attachment(self, attachment):

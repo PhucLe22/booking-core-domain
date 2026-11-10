@@ -27,8 +27,11 @@ def custom_exception_handler(exc, context):
     }
 
     if response is not None and response.status_code in error_messages:
-        return Response(
-            error_messages[response.status_code], status=response.status_code
-        )
+        body = dict(error_messages[response.status_code])
+        # keep the reason of a 403, eg "You do not have the permission RESOURCE.DESTROY!"
+        detail = getattr(exc, "detail", None)
+        if response.status_code == status.HTTP_403_FORBIDDEN and isinstance(detail, str):
+            body["message"] = str(detail)
+        return Response(body, status=response.status_code)
 
     return response

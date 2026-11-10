@@ -5,8 +5,8 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from core.constant import SYSTEM_ENUM_TYPES
 from core.filters import EnumDefinitionFilter
-from core.middlewares.login_required import LOGIN_REQUIRED
-from core.middlewares.staff import AdminMiddleware
+from core.permissions.login_required import LOGIN_REQUIRED
+from core.permissions.roles import IsAdmin
 from core.models import EnumDefinition, EnumType
 from core.paginators import CustomPaginator
 from core.serializers.master_data_serializers import (
@@ -38,7 +38,7 @@ class MasterDataViewSet(viewsets.ViewSet):
     def get_permissions(self):
         if self.action in ["list", "retrieve"]:
             return [cls() for cls in LOGIN_REQUIRED]
-        return [cls() for cls in [*LOGIN_REQUIRED, AdminMiddleware]]
+        return [cls() for cls in [*LOGIN_REQUIRED, IsAdmin]]
 
     def paginated(self, filterset, serializer_class, message):
         if not filterset.is_valid():

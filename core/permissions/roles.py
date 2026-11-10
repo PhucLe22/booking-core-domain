@@ -5,7 +5,7 @@ from rest_framework.request import Request
 from core.constant import STAFF_ROLE_CODES, RoleCode
 
 
-class RoleRequiredMiddleware(BasePermission):
+class HasRole(BasePermission):
     """Allows only users that have one of role_codes."""
 
     role_codes = []
@@ -18,11 +18,11 @@ class RoleRequiredMiddleware(BasePermission):
         raise PermissionDenied(self.message)
 
 
-class StaffMiddleware(RoleRequiredMiddleware):
+class IsStaff(HasRole):
     role_codes = STAFF_ROLE_CODES
     message = "Only staff can perform this action!"
 
 
-class AdminMiddleware(RoleRequiredMiddleware):
+class IsAdmin(HasRole):
     role_codes = [RoleCode.ADMIN]
     message = "Only admin can perform this action!"

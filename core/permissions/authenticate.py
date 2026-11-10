@@ -5,7 +5,7 @@ from core.constant import EXCLUDE_AUTH_PATH
 from core.utils import path_is_excluded
 
 
-class AuthenticateMiddleware(IsAuthenticated):
+class IsLoggedIn(IsAuthenticated):
     def has_permission(self, request: Request, view):
         current_route = request.resolver_match.route
         if path_is_excluded(current_route, EXCLUDE_AUTH_PATH):

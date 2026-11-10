@@ -97,7 +97,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "debug_toolbar.middleware.DebugToolbarMiddleware",
     "corsheaders.middleware.CorsMiddleware",
-    "core.middlewares.blacklist_access_token.BlacklistAccessTokenMiddleware",
+    "core.permissions.blacklist_access_token.BlacklistAccessTokenMiddleware",
 ]
 
 CORS_ALLOW_ALL_ORIGINS = True
