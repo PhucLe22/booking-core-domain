@@ -174,28 +174,32 @@ class EditBookingSerializer(serializers.ModelSerializer):
             return new_status
 
         current = instance.status
-        allowed = BOOKING_TRANSITIONS.get(current.code, [])
-        if not allowed:
-            raise serializers.ValidationError(
-                {
-                    "status": [
-                        f"Booking is {current.name.lower()} "
-                        "and can no longer be changed!"
-                    ]
-                }
-            )
-        if new_status is None or new_status == current:
+        new_status = new_status or current
+        # same status: other fields can change, unless the status is final
+        if new_status == current and BOOKING_TRANSITIONS.get(current.code):
             return current
-        if new_status.code not in allowed:
+        message = Booking.transition_error(current, new_status)
+        if message:
             raise serializers.ValidationError(
-                {
-                    "status": [
-                        f"Booking cannot change from {current.name} "
-                        f"to {new_status.name}!"
-                    ]
-                }
+                {"status": [message]}, code="invalid_transition"
             )
         return new_status
+
+    def create(self, validated_data):
+        # save(actor=...) tells who made the booking (none: a guest)
+        actor = validated_data.pop("actor", None)
+        booking = super().create(validated_data)
+        booking.add_history(booking.status, actor=actor)
+        return booking
+
+    def update(self, instance, validated_data):
+        # the status goes through Booking.change_status to be recorded in the history
+        actor = validated_data.pop("actor", None)
+        new_status = validated_data.pop("status", instance.status)
+        booking = super().update(instance, validated_data)
+        if new_status != booking.status:
+            booking.change_status(new_status, actor=actor)
+        return booking
 
 
 class GuestBookingSerializer(EditBookingSerializer):

@@ -158,7 +158,9 @@ update_booking_description = {
     "request": EditBookingSerializer,
     "responses": {
         200: success_response(BookingSerializer),
-        **error_responses(*AUTH_ERRORS, "NOT_FOUND", "VALIDATION_FAILED"),
+        **error_responses(
+            *AUTH_ERRORS, "NOT_FOUND", "INVALID_TRANSITION", "VALIDATION_FAILED"
+        ),
     },
 }
 

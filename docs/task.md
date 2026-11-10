@@ -153,11 +153,15 @@ Máy local chưa cài Django trong `.venv` → chạy kiểm tra trong container
     `CHECKED_IN`; booking mới chỉ được `PENDING_APPROVAL` hoặc `CONFIRMED`.
   - `core/querysets.py`: calendar ẩn `CANCELLED`, `REJECTED`, `EXPIRED`.
   - Ghi chú: client gửi `status: "pending"` giờ nhận 422 – phải gửi `pending_approval`.
-- [ ] **2.10** Logic chuyển trạng thái theo spec, dùng chung cho API và timer: sửa bảng `BOOKING_TRANSITIONS` có sẵn;
-      thêm method `Booking.change_status(to_status, actor, reason=None)` đổi trạng thái + ghi `BookingHistory`;
-      sai trạng thái → lỗi code `invalid_transition` (409).
-  - `core/constant.py` (`BookingStatus`, `BOOKING_TRANSITIONS`)
-  - `core/models.py` (`Booking.change_status`)
+- [x] **2.10** Logic chuyển trạng thái theo spec, dùng chung cho API và timer.
+  - `core/constant.py`: `BOOKING_TRANSITIONS` đủ 9 trạng thái (5 trạng thái kết thúc = danh sách rỗng).
+    `CONFIRMED → COMPLETED` tạm giữ cho resource type không check-in, tách theo `flow_config` ở 3.2.
+  - `core/models.py` (`Booking`): `transition_error(current, target)`, `change_status(to_status, actor=None,
+    reason=None)` (đổi trạng thái + ghi `BookingHistory`; sai → lỗi code `invalid_transition` = 409),
+    `add_history(...)`. Không có actor = `system` (timer).
+  - `core/serializers/booking_serializers.py`: kiểm tra bằng `Booking.transition_error`; tạo booking ghi history
+    đầu tiên; `PUT` đổi status đi qua `change_status`. Booking ở trạng thái kết thúc không sửa được (409).
+  - `services/booking/apis/views.py`: `serializer.save(actor=request.user)` (guest: actor `system`).
 - [ ] **2.11** Serializer theo spec (sửa `EditBookingSerializer`, giữ kiểm tra giờ/trùng slot; chuyển
       `validate_status_change` sang `BOOKING_TRANSITIONS` mới): `resource_id`, `start`/`end`, `member_id`, `resource_type_id`,
       `custom_field_values`, `status` viết thường, `history`, `applied_config`; trùng giờ → code `slot_taken` (409).
@@ -166,7 +170,7 @@ Máy local chưa cài Django trong `.venv` → chạy kiểm tra trong container
       `status`; mới nhất trước.
   - `core/filters.py`
 - [ ] **2.13** Thêm action `check_in`, `complete`, `no_show`, `cancel`, `approve`, `reject` (`reject` có `reason`),
-      path dạng `/bookings/{id}/<action>/`. `PUT` (giữ lại) khi đổi `status` cũng đi qua `Booking.change_status()`.
+      path dạng `/bookings/{id}/<action>/`, gọi `Booking.change_status()` (`PUT` đã đi qua hàm này từ 2.10).
   - `services/booking/apis/{views,documents}.py`
 - [ ] **2.14** Đồng bộ các API giữ lại với spec (sửa `GuestBookingSerializer`/`StaffBookingSerializer`):
       `guest` (`guest_name`, `guest_email`, `guest_phone`), `staff` (`member_id` thay `user`), trả object `Booking` như spec.
@@ -201,6 +205,14 @@ Máy local chưa cài Django trong `.venv` → chạy kiểm tra trong container
 - [ ] **3.5** Timer chạy mỗi phút: `no_show`, `complete`, `expired` (actor `system`) – vị trí chạy xem mục "Còn cần chốt".
   - `core/management/commands/booking_timers.py` (mới, cạnh `example_cron_job.py` có sẵn)
   - `services/apschedule/apis/schedulers.py`
+
+- [ ] **3.6** Thời gian trả về có múi giờ theo spec (`2026-12-15T09:00:00+07:00`). Hiện `USE_TZ = False` nên API trả
+      giờ không có offset (`2026-11-10T09:21:25.969270`).
+  - Hướng nhỏ: serializer của resource và booking format datetime kèm offset của site (sau 3.1) / `Asia/Ho_Chi_Minh`,
+    không đổi DB.
+  - Hướng đầy đủ: bật `USE_TZ = True` trong `app/settings.py` (ảnh hưởng mọi service), chuyển dữ liệu datetime đang lưu
+    dạng naive, kiểm tra lại các filter `from`/`to`, calendar.
+  - Chốt hướng trước khi làm; nên làm cùng/sau 3.1 (Site có `timezone_offset`).
 
 ## Phase 4 – Làm sau (cần quyết định trước)
 

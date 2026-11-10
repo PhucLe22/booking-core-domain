@@ -163,11 +163,30 @@ class BookingActorType:
     CHOICES = [(USER, "User"), (SYSTEM, "System")]
 
 
-# allowed booking status changes: current status -> statuses it can move to
-# (the transitions of the new statuses come with the booking actions, task 2.10)
+# allowed booking status changes (docs/web_api_spec.md):
+# current status -> statuses it can move to; an empty list is a final status
 BOOKING_TRANSITIONS = {
-    BookingStatus.PENDING_APPROVAL: [BookingStatus.CONFIRMED, BookingStatus.CANCELLED],
-    BookingStatus.CONFIRMED: [BookingStatus.CANCELLED, BookingStatus.COMPLETED],
-    BookingStatus.CANCELLED: [],
+    BookingStatus.AWAITING_PAYMENT: [
+        BookingStatus.CANCELLED,  # cancel
+        BookingStatus.EXPIRED,  # timer: not paid in time
+    ],
+    BookingStatus.PENDING_APPROVAL: [
+        BookingStatus.CONFIRMED,  # approve
+        BookingStatus.REJECTED,  # reject
+        BookingStatus.CANCELLED,  # cancel
+    ],
+    BookingStatus.CONFIRMED: [
+        BookingStatus.CHECKED_IN,  # check-in
+        BookingStatus.NO_SHOW,  # no-show (timer or staff)
+        BookingStatus.CANCELLED,  # cancel
+        # without check-in the booking is completed from here; once the flow config
+        # of the resource type exists (task 3.2) only types without check-in do this
+        BookingStatus.COMPLETED,
+    ],
+    BookingStatus.CHECKED_IN: [BookingStatus.COMPLETED],  # complete
     BookingStatus.COMPLETED: [],
+    BookingStatus.EXPIRED: [],
+    BookingStatus.REJECTED: [],
+    BookingStatus.CANCELLED: [],
+    BookingStatus.NO_SHOW: [],
 }

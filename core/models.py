@@ -5,7 +5,7 @@ from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError
 from django.core.validators import FileExtensionValidator, MinValueValidator
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Q
 from django.utils import timezone
 from django_extensions.db.models import TimeStampedModel
@@ -18,7 +18,7 @@ from .managers import (
 )
 from .querysets import BookingQuerySet
 
-from core.constant import USER_DEFAULT_SYSTEM, BookingActorType
+from core.constant import BOOKING_TRANSITIONS, USER_DEFAULT_SYSTEM, BookingActorType
 
 
 # =========================================================
@@ -514,9 +514,6 @@ class Booking(models.Model):
     title = models.CharField(max_length=255, blank=True, null=True)
     description = models.TextField(blank=True, null=True)
     configuration = models.JSONField(default=dict, blank=True)
-    # flow config of the resource type and rule set version when the booking was made,
-    # so later config changes do not change this booking
-    # (docs/web_api_spec.md appliedConfig)
     applied_config = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -561,6 +558,57 @@ class Booking(models.Model):
 
     def __str__(self):
         return self.title or str(self.pk)
+
+    # ---- status changes (used by the API and by the timers) ----
+
+    @staticmethod
+    def transition_error(current, target):
+        """Why a booking in status `current` cannot move to `target`, or None."""
+        allowed = BOOKING_TRANSITIONS.get(current.code, [])
+        if not allowed:
+            return f"Booking is {current.name.lower()} and can no longer be changed!"
+        if target.code not in allowed:
+            return f"Booking cannot change from {current.name} to {target.name}!"
+        return None
+
+    def add_history(self, to_status, from_status=None, actor=None, reason=None):
+        """One history entry; no actor means the system did it (eg a timer)."""
+        return BookingHistory.objects.create(
+            booking=self,
+            from_status=from_status,
+            to_status=to_status,
+            actor_type=BookingActorType.USER if actor else BookingActorType.SYSTEM,
+            actor=actor,
+            reason=reason,
+        )
+
+    def change_status(self, to_status, actor=None, reason=None):
+        """
+        Move the booking to `to_status` (a BOOKING_STATUS value or its code, eg
+        "checked_in") and record it in the history. A change BOOKING_TRANSITIONS does not
+        allow raises a validation error with the code "invalid_transition" (HTTP 409).
+        """
+        # imported here: rest_framework is not needed to load the models
+        from rest_framework.exceptions import ValidationError as ApiValidationError
+
+        target = to_status
+        if not isinstance(target, EnumDefinition):
+            target = EnumDefinition.objects.filter(
+                enum_type__code="BOOKING_STATUS", code=str(to_status).upper()
+            ).first()
+            if target is None:
+                raise ApiValidationError(
+                    {"status": [f"Booking status '{to_status}' does not exist!"]}
+                )
+        message = self.transition_error(self.status, target)
+        if message:
+            raise ApiValidationError({"status": [message]}, code="invalid_transition")
+
+        with transaction.atomic():
+            previous = self.status
+            self.status = target
+            self.save(update_fields=["status", "updated_at"])
+            return self.add_history(target, previous, actor, reason)
 
 
 class BookingHistory(models.Model):

@@ -85,7 +85,7 @@ class BookingViewSet(WebApiMixin, viewsets.ViewSet):
     def create(self, request):
         serializer = EditBookingSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        serializer.save(user=request.user)
+        serializer.save(user=request.user, actor=request.user)
         return response_success(
             BookingSerializer(serializer.instance).data,
             "Booking created successfully!",
@@ -104,7 +104,7 @@ class BookingViewSet(WebApiMixin, viewsets.ViewSet):
     def guest(self, request):
         serializer = GuestBookingSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        serializer.save(user=None)
+        serializer.save(user=None)  # guest: the history actor is the system
         return response_success(
             BookingSerializer(serializer.instance).data,
             "Booking created successfully!",
@@ -122,7 +122,7 @@ class BookingViewSet(WebApiMixin, viewsets.ViewSet):
     def staff(self, request):
         serializer = StaffBookingSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        serializer.save(actor=request.user)
         return response_success(
             BookingSerializer(serializer.instance).data,
             "Booking created successfully!",
@@ -135,7 +135,7 @@ class BookingViewSet(WebApiMixin, viewsets.ViewSet):
         booking = self.get_own_booking(request, pk)
         serializer = EditBookingSerializer(booking, data=request.data)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        serializer.save(actor=request.user)
         return response_success(
             BookingSerializer(serializer.instance).data,
             "Booking updated successfully!",
