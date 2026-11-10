@@ -1,7 +1,8 @@
-from django.db import DatabaseError
+from django.db import transaction
 from drf_spectacular.utils import extend_schema
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 
 from core.filters import ResourceFilter, ResourceTypeFilter
 from core.models import Resource, ResourceType
@@ -12,7 +13,7 @@ from core.serializers.resource_serializers import (
     ResourceSerializer,
     ResourceTypeSerializer,
 )
-from core.utils import get_instance, response_errors, response_success
+from core.utils import WebApiMixin, get_instance, response_success
 
 from .documents import (
     create_resource_description,
@@ -21,12 +22,14 @@ from .documents import (
     delete_resource_type_description,
     list_resource_description,
     list_resource_type_description,
+    retrieve_resource_description,
+    retrieve_resource_type_description,
     update_resource_description,
     update_resource_type_description,
 )
 
 
-class ResourceViewSet(viewsets.ViewSet):
+class ResourceViewSet(WebApiMixin, viewsets.ViewSet):
 
     @extend_schema(**list_resource_description)
     def list(self, request):
@@ -37,7 +40,7 @@ class ResourceViewSet(viewsets.ViewSet):
             ).order_by("name"),
         )
         if not resource_filter.is_valid():
-            return response_errors(resource_filter.errors)
+            raise ValidationError(resource_filter.errors)
         paginator = CustomPaginator()
         page = paginator.paginate_queryset(resource_filter.qs, request)
         serializer = ResourceSerializer(page, many=True)
@@ -48,8 +51,7 @@ class ResourceViewSet(viewsets.ViewSet):
     @extend_schema(**create_resource_description)
     def create(self, request):
         serializer = EditResourceSerializer(data=request.data)
-        if not serializer.is_valid():
-            return response_errors(serializer.errors)
+        serializer.is_valid(raise_exception=True)
         resource = serializer.save()
         return response_success(
             ResourceSerializer(resource).data,
@@ -57,12 +59,18 @@ class ResourceViewSet(viewsets.ViewSet):
             status.HTTP_201_CREATED,
         )
 
+    @extend_schema(**retrieve_resource_description)
+    def retrieve(self, request, pk=None):
+        resource = get_instance(Resource, pk)
+        return response_success(
+            ResourceSerializer(resource).data, "Resource retrieved successfully!"
+        )
+
     @extend_schema(**update_resource_description)
     def update(self, request, pk=None):
         resource = get_instance(Resource, pk)
         serializer = EditResourceSerializer(resource, data=request.data)
-        if not serializer.is_valid():
-            return response_errors(serializer.errors)
+        serializer.is_valid(raise_exception=True)
         resource = serializer.save()
         return response_success(
             ResourceSerializer(resource).data, "Resource updated successfully!"
@@ -75,7 +83,7 @@ class ResourceViewSet(viewsets.ViewSet):
         return response_success(message="Resource deleted successfully!")
 
 
-class ResourceTypeViewSet(viewsets.ViewSet):
+class ResourceTypeViewSet(WebApiMixin, viewsets.ViewSet):
 
     @extend_schema(**list_resource_type_description)
     def list(self, request):
@@ -93,8 +101,7 @@ class ResourceTypeViewSet(viewsets.ViewSet):
     @extend_schema(**create_resource_type_description)
     def create(self, request):
         serializer = EditResourceTypeSerializer(data=request.data)
-        if not serializer.is_valid():
-            return response_errors(serializer.errors)
+        serializer.is_valid(raise_exception=True)
         serializer.save()
         return response_success(
             ResourceTypeSerializer(serializer.instance).data,
@@ -102,12 +109,23 @@ class ResourceTypeViewSet(viewsets.ViewSet):
             status.HTTP_201_CREATED,
         )
 
+    @extend_schema(**retrieve_resource_type_description)
+    def retrieve(self, request, pk=None):
+        return response_success(
+            ResourceTypeSerializer(get_instance(ResourceType, pk)).data,
+            "Resource type retrieved successfully!",
+        )
+
     @extend_schema(**update_resource_type_description)
-    def update(self, request, pk=None):
-        resource_type = get_instance(ResourceType, pk)
-        serializer = EditResourceTypeSerializer(resource_type, data=request.data)
-        if not serializer.is_valid():
-            return response_errors(serializer.errors)
+    @transaction.atomic
+    def partial_update(self, request, pk=None):
+        get_instance(ResourceType, pk)  # 404 for an unknown or invalid id
+        # lock the row: two updates based on the same version cannot both pass
+        resource_type = ResourceType.objects.select_for_update().get(pk=pk)
+        serializer = EditResourceTypeSerializer(
+            resource_type, data=request.data, partial=True
+        )
+        serializer.is_valid(raise_exception=True)
         serializer.save()
         return response_success(
             ResourceTypeSerializer(serializer.instance).data,

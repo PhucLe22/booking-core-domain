@@ -1,3 +1,4 @@
+import re
 from enum import Enum
 
 USER_DEFAULT_SYSTEM = 3
@@ -17,6 +18,11 @@ EXCLUDE_ACTIVE_PATH = [
     "api/v1/users/",
     "api/v1/auth/me/",
 ]
+
+# message of every 401 answered by core.utils.WebApiMixin
+# (missing, invalid or expired token)
+UNAUTHENTICATED_MESSAGE = "You are not authenticated, please log in again!"
+
 
 class NotificationTypeEnum(Enum):
     # system notification 1-20
@@ -113,6 +119,20 @@ SYSTEM_ENUM_TYPES = ["RESOURCE_STATUS", "BOOKING_STATUS", "NOTIFICATION_TYPE"]
 # ResourceType.configuration["status_enum_type"] names another list
 DEFAULT_RESOURCE_STATUS_TYPE = "RESOURCE_STATUS"
 
+# key of a resource type and of its custom fields (docs/web_api_spec.md),
+# eg phone_booth, has_phone_charger
+KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
+KEY_PATTERN_MESSAGE = "Must match ^[a-z][a-z0-9_]*$"
+
+# configuration["fields"] is an object {key: definition}; Postgres jsonb does not keep
+# the order of its keys, so the order of the list is kept in configuration["field_order"]
+FIELD_ORDER = "field_order"
+
+FIELD_LIST_HELP = (
+    'Custom fields, eg [{"key": "capacity", "label": "Capacity", "type": "integer", '
+    '"required": true, "min": 1}]'
+)
+
 
 class ResourceStatus:
     ACTIVE = "ACTIVE"
@@ -125,6 +145,14 @@ class BookingStatus:
     CONFIRMED = "CONFIRMED"
     CANCELLED = "CANCELLED"
     COMPLETED = "COMPLETED"
+
+
+# who changed the status of a booking (BookingHistory.actor_type, docs/web_api_spec.md)
+class BookingActorType:
+    USER = "user"
+    SYSTEM = "system"
+
+    CHOICES = [(USER, "User"), (SYSTEM, "System")]
 
 
 # allowed booking status changes: current status -> statuses it can move to

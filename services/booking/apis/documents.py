@@ -7,6 +7,7 @@ from core.serializers.booking_serializers import (
     ResourceCalendarSerializer,
     StaffBookingSerializer,
 )
+from core.utils import AUTH_ERRORS, error_responses, success_response
 
 booking_id_parameter = OpenApiParameter(
     "id",
@@ -67,7 +68,10 @@ list_booking_description = {
             description="Bookings that start before this time, eg: 2026-10-09T00:00:00",
         ),
     ],
-    "responses": {200: BookingSerializer(many=True)},
+    "responses": {
+        200: success_response(BookingSerializer, "page"),
+        **error_responses(*AUTH_ERRORS, "VALIDATION_FAILED"),
+    },
 }
 
 list_my_booking_description = {
@@ -121,21 +125,30 @@ list_my_booking_description = {
             description="Bookings that start before this time, eg: 2026-10-09T00:00:00",
         ),
     ],
-    "responses": {200: BookingSerializer(many=True)},
+    "responses": {
+        200: success_response(BookingSerializer, "page"),
+        **error_responses(*AUTH_ERRORS, "VALIDATION_FAILED"),
+    },
 }
 
 retrieve_booking_description = {
     "parameters": [booking_id_parameter],
     "summary": "Get booking detail",
     "description": "Get booking detail",
-    "responses": {200: BookingSerializer},
+    "responses": {
+        200: success_response(BookingSerializer),
+        **error_responses(*AUTH_ERRORS, "NOT_FOUND"),
+    },
 }
 
 create_booking_description = {
     "summary": "Create booking (logged in customer)",
     "description": "Create a new booking for the logged in user. The user is taken from the access token.",
     "request": EditBookingSerializer,
-    "responses": {201: BookingSerializer},
+    "responses": {
+        201: success_response(BookingSerializer),
+        **error_responses(*AUTH_ERRORS, "VALIDATION_FAILED"),
+    },
 }
 
 update_booking_description = {
@@ -143,21 +156,30 @@ update_booking_description = {
     "summary": "Update booking",
     "description": "Update an existing booking",
     "request": EditBookingSerializer,
-    "responses": {200: BookingSerializer},
+    "responses": {
+        200: success_response(BookingSerializer),
+        **error_responses(*AUTH_ERRORS, "NOT_FOUND", "VALIDATION_FAILED"),
+    },
 }
 
 delete_booking_description = {
     "parameters": [booking_id_parameter],
     "summary": "Delete booking",
     "description": "Delete a booking",
-    "responses": {200: None},
+    "responses": {
+        200: success_response(),
+        **error_responses(*AUTH_ERRORS, "NOT_FOUND"),
+    },
 }
 
 create_guest_booking_description = {
     "summary": "Create booking (guest)",
     "description": "Create a new booking without logging in. Guest name and email are required.",
     "request": GuestBookingSerializer,
-    "responses": {201: BookingSerializer},
+    "responses": {
+        201: success_response(BookingSerializer),
+        **error_responses("VALIDATION_FAILED"),
+    },
     "auth": [],
 }
 
@@ -165,7 +187,10 @@ create_staff_booking_description = {
     "summary": "Create booking (staff)",
     "description": "Staff creates a booking for a customer (send `user`) or a guest (send `guest_name` and `guest_email`). Requires an admin or staff account.",
     "request": StaffBookingSerializer,
-    "responses": {201: BookingSerializer},
+    "responses": {
+        201: success_response(BookingSerializer),
+        **error_responses(*AUTH_ERRORS, "VALIDATION_FAILED"),
+    },
 }
 
 get_booking_calendar_description = {
@@ -200,5 +225,8 @@ get_booking_calendar_description = {
             description="Filter by resource type code, eg: MEETING_ROOM",
         ),
     ],
-    "responses": {200: ResourceCalendarSerializer(many=True)},
+    "responses": {
+        200: success_response(ResourceCalendarSerializer, "list"),
+        **error_responses(*AUTH_ERRORS, "VALIDATION_FAILED"),
+    },
 }

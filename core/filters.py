@@ -15,18 +15,19 @@ from core.models import (
 )
 
 class ResourceFilter(filters.FilterSet):
-    resource_type = filters.UUIDFilter(
+    resource_type_id = filters.UUIDFilter(
         field_name="resource_type",
         error_messages={"invalid": "Resource type ID is not a valid UUID!"},
     )
-    resource_type_code = filters.CharFilter(field_name="resource_type__code")
+    resource_type_key = filters.CharFilter(field_name="resource_type__code")
     status = filters.CharFilter(field_name="status__code", lookup_expr="iexact")
+    label = filters.CharFilter(field_name="name")
+    label__icontains = filters.CharFilter(field_name="name", lookup_expr="icontains")
 
     class Meta:
         model = Resource
         fields = {
             "code": ["exact", "icontains"],
-            "name": ["exact", "icontains"],
         }
 
 

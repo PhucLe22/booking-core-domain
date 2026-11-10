@@ -7,6 +7,7 @@ from django.core.exceptions import ValidationError
 from django.core.validators import FileExtensionValidator, MinValueValidator
 from django.db import models
 from django.db.models import Q
+from django.utils import timezone
 from django_extensions.db.models import TimeStampedModel
 from django_softdelete.models import SoftDeleteModel
 
@@ -17,7 +18,7 @@ from .managers import (
 )
 from .querysets import BookingQuerySet
 
-from core.constant import USER_DEFAULT_SYSTEM
+from core.constant import USER_DEFAULT_SYSTEM, BookingActorType
 
 
 # =========================================================
@@ -331,6 +332,11 @@ class ResourceType(models.Model):
     description = models.TextField(blank=True)
     configuration = models.JSONField(default=dict, blank=True)
     is_active = models.BooleanField(default=True)
+    # optimistic locking: an update sends the version it read (base_version) and the
+    # version goes up by one when the update is saved
+    version = models.PositiveIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = "resource_types"
@@ -508,7 +514,12 @@ class Booking(models.Model):
     title = models.CharField(max_length=255, blank=True, null=True)
     description = models.TextField(blank=True, null=True)
     configuration = models.JSONField(default=dict, blank=True)
+    # flow config of the resource type and rule set version when the booking was made,
+    # so later config changes do not change this booking
+    # (docs/web_api_spec.md appliedConfig)
+    applied_config = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     objects = BookingQuerySet.as_manager()
 
@@ -550,6 +561,63 @@ class Booking(models.Model):
 
     def __str__(self):
         return self.title or str(self.pk)
+
+
+class BookingHistory(models.Model):
+    """
+    One status change of a booking; the first entry (no from_status) is its creation.
+    actor_type "user" with actor = who did it, or "system" (timers, actor empty).
+    """
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+    booking = models.ForeignKey(
+        Booking,
+        on_delete=models.CASCADE,
+        related_name="history",
+    )
+    from_status = models.ForeignKey(
+        EnumDefinition,
+        on_delete=models.PROTECT,
+        related_name="+",
+        null=True,
+        blank=True,
+    )
+    to_status = models.ForeignKey(
+        EnumDefinition,
+        on_delete=models.PROTECT,
+        related_name="+",
+    )
+    occurred_at = models.DateTimeField(default=timezone.now)
+    actor_type = models.CharField(
+        max_length=20,
+        choices=BookingActorType.CHOICES,
+        default=BookingActorType.USER,
+    )
+    actor = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        null=True,
+        blank=True,
+    )
+    reason = models.TextField(blank=True, null=True)
+
+    class Meta:
+        db_table = "booking_histories"
+        ordering = ["occurred_at"]
+        indexes = [
+            models.Index(
+                fields=["booking", "occurred_at"],
+                name="booking_history_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.booking_id}: {self.from_status_id} -> {self.to_status_id}"
 
 
 # =========================================================

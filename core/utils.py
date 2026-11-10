@@ -3,16 +3,24 @@ import re
 import shutil
 from datetime import datetime, timedelta
 from decimal import Decimal
+from functools import lru_cache
 from typing import List
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Model, Q
 from django.utils import timezone
+from drf_spectacular.utils import OpenApiExample, OpenApiResponse, inline_serializer
 from PIL import Image
-from rest_framework import serializers, status
+from rest_framework import exceptions, serializers, status
 from rest_framework.exceptions import NotFound, ParseError
 from rest_framework.response import Response
 
-from core.constant import DIR_TO_UPLOAD_MAPPER, PERMISSIONS_LIST, UI_PERMISSION_MAPPING
+from core.constant import (
+    DIR_TO_UPLOAD_MAPPER,
+    PERMISSIONS_LIST,
+    UI_PERMISSION_MAPPING,
+    UNAUTHENTICATED_MESSAGE,
+)
 
 
 def response_success(data=None, message="", status_code=status.HTTP_200_OK):
@@ -309,3 +317,189 @@ def global_response_errors(errors):
         "status": False,
         "message": error_message
         },status=status.HTTP_400_BAD_REQUEST)
+
+
+# =========================================================
+# WEB API ERRORS – same format as response_success / response_errors
+# =========================================================
+# Add WebApiMixin before viewsets.ViewSet to turn it on for a viewset; other views keep
+# the old error handler (core/exceptions.py). Every error answers
+#
+#     {"status": false, "data": {<field>: [<message>]} or {}, "message": "<first error>"}
+#
+# with the HTTP status telling the kind of error: 401, 403, 404, 405..., 409 (business
+# conflict) or 422 (invalid data). Business errors are raised from serializers with the
+# DRF error code, eg serializers.ValidationError({"start_at": "..."}, code="slot_taken").
+# success_response / error_responses describe these formats in documents.py.
+
+# DRF error code given in a serializer -> HTTP status (other validation errors: 422)
+ERROR_CODE_STATUS = {
+    "slot_taken": status.HTTP_409_CONFLICT,
+    "invalid_transition": status.HTTP_409_CONFLICT,
+    "stale_version": status.HTTP_409_CONFLICT,
+    "booking_denied": status.HTTP_422_UNPROCESSABLE_ENTITY,
+}
+
+
+def error_codes(detail):
+    """Every DRF error code inside a ValidationError detail."""
+    if isinstance(detail, dict):
+        return set().union(*(error_codes(value) for value in detail.values()))
+    if isinstance(detail, list):
+        return set().union(*(error_codes(item) for item in detail))
+    return {getattr(detail, "code", None)}
+
+
+def web_api_exception_handler(exc, context):
+    # imported here: core.utils is loaded while rest_framework.views reads
+    # DEFAULT_PERMISSION_CLASSES (core.permissions -> core.utils), a top-level import
+    # of rest_framework.views would be circular
+    from rest_framework.views import exception_handler
+
+    # an invalid UUID in the URL raises a Django error: it cannot match any record
+    if isinstance(exc, DjangoValidationError):
+        exc = exceptions.NotFound("No record matches the given query!")
+
+    response = exception_handler(exc, context)
+    if response is None:  # unexpected error: 500 as before
+        return None
+
+    data, message = {}, str(getattr(exc, "detail", exc))
+    if isinstance(exc, (exceptions.NotAuthenticated, exceptions.AuthenticationFailed)):
+        # one plain sentence: simplejwt puts a dict of token details in exc.detail
+        response.status_code = status.HTTP_401_UNAUTHORIZED
+        message = UNAUTHENTICATED_MESSAGE
+    elif isinstance(exc, exceptions.ValidationError):
+        codes = error_codes(exc.detail)
+        response.status_code = next(
+            (http for code, http in ERROR_CODE_STATUS.items() if code in codes),
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
+        data, message = exc.detail, extract_first_error_message(exc.detail) or str(exc)
+    elif isinstance(exc, exceptions.ParseError):  # eg malformed JSON
+        response.status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
+
+    response.data = {"status": False, "data": data, "message": message}
+    return response
+
+
+class WebApiMixin:
+    """Errors of this viewset as {status: false, data, message} (see above)."""
+
+    def get_exception_handler(self):
+        return web_api_exception_handler
+
+
+# =========================================================
+# SWAGGER (drf-spectacular) – used in documents.py
+# =========================================================
+
+# kind of error -> (HTTP status, field of the example error or None, example message)
+ERROR_EXAMPLES = {
+    "UNAUTHENTICATED": (401, None, UNAUTHENTICATED_MESSAGE),
+    "FORBIDDEN": (403, None, "You do not have permission to perform this action!"),
+    "NOT_FOUND": (404, None, "No record matches the given query!"),
+    "SLOT_TAKEN": (409, "start_at", "Resource is already booked for this time!"),
+    "INVALID_TRANSITION": (
+        409,
+        "status",
+        "Booking cannot change from Cancelled to Confirmed!",
+    ),
+    "STALE_VERSION": (
+        409,
+        "base_version",
+        "Resource type was changed by someone else (now version 2), reload it!",
+    ),
+    "VALIDATION_FAILED": (422, "start_at", "Please enter start time!"),
+    "BOOKING_DENIED": (422, "non_field_errors", "Guests can book at most 2 hours"),
+}
+
+
+def error_example(kind):
+    """Example body of one kind of error: {status: false, data, message}."""
+    http_status, field, message = ERROR_EXAMPLES[kind]
+    return OpenApiExample(
+        kind.replace("_", " ").capitalize(),
+        value={
+            "status": False,
+            "data": {field: [message]} if field else {},
+            "message": message,
+        },
+        response_only=True,
+        status_codes=[str(http_status)],
+    )
+
+
+# every API that needs a login can answer these
+AUTH_ERRORS = ("UNAUTHENTICATED", "FORBIDDEN")
+
+ERROR_SCHEMA = inline_serializer(
+    name="ErrorResponse",
+    fields={
+        "status": serializers.BooleanField(help_text="always false"),
+        "data": serializers.DictField(
+            help_text="errors per field, {} when not about fields"
+        ),
+        "message": serializers.CharField(help_text="first error, to show to the user"),
+    },
+)
+
+PAGINATION_SCHEMA = inline_serializer(
+    name="Pagination",
+    fields={
+        "total_items": serializers.IntegerField(),
+        "page_size": serializers.IntegerField(),
+        "current_page": serializers.IntegerField(),
+        "total_pages": serializers.IntegerField(),
+        "next_page": serializers.URLField(allow_null=True),
+        "previous_page": serializers.URLField(allow_null=True),
+    },
+)
+
+
+def error_responses(*kinds):
+    """
+    Error responses for `responses` of extend_schema, grouped by HTTP status, eg
+    {**error_responses(*AUTH_ERRORS, "NOT_FOUND", "VALIDATION_FAILED")}.
+    """
+    by_status = {}
+    for kind in kinds:
+        by_status.setdefault(ERROR_EXAMPLES[kind][0], []).append(kind)
+    return {
+        http_status: OpenApiResponse(
+            response=ERROR_SCHEMA,
+            description=" / ".join(status_kinds),
+            examples=[error_example(kind) for kind in status_kinds],
+        )
+        for http_status, status_kinds in by_status.items()
+    }
+
+
+@lru_cache(maxsize=None)
+def success_response(serializer_class=None, shape="object"):
+    """
+    Schema of response_success / CustomPaginator for `responses` of extend_schema:
+    {status, data, message}, data being
+      shape="object": one serializer_class (or {} when serializer_class is None)
+      shape="list":   a list of serializer_class
+      shape="page":   a list of serializer_class, plus "pagination"
+    Cached: one schema component per (serializer, shape).
+    """
+    if serializer_class is None:
+        name, data = "EmptyResponse", serializers.DictField(help_text="always {}")
+    else:
+        suffix = {
+            "object": "Response",
+            "list": "ListResponse",
+            "page": "PageResponse",
+        }[shape]
+        name = serializer_class.__name__.removesuffix("Serializer") + suffix
+        data = serializer_class(many=shape != "object")
+    fields = {
+        "status": serializers.BooleanField(),
+        "data": data,
+        "message": serializers.CharField(),
+    }
+    if shape == "page":
+        fields["pagination"] = PAGINATION_SCHEMA
+    return inline_serializer(name=name, fields=fields)

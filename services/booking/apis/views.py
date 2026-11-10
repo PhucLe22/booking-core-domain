@@ -5,14 +5,14 @@ from django.db import transaction
 from drf_spectacular.utils import extend_schema
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from core.constant import STAFF_ROLE_CODES
 from core.filters import BookingCalendarFilter, BookingFilter
-from core.middlewares.login_required import LOGIN_REQUIRED
-from core.middlewares.staff import StaffMiddleware
+from core.permissions.login_required import LOGIN_REQUIRED
+from core.permissions.roles import IsStaff
 from core.models import Booking, Resource
 from core.paginators import CustomPaginator
 from core.serializers.booking_serializers import (
@@ -22,7 +22,7 @@ from core.serializers.booking_serializers import (
     ResourceCalendarSerializer,
     StaffBookingSerializer,
 )
-from core.utils import response_errors, response_success
+from core.utils import WebApiMixin, response_success
 
 from .documents import (
     create_booking_description,
@@ -37,10 +37,9 @@ from .documents import (
 )
 
 
-class BookingViewSet(viewsets.ViewSet):
+class BookingViewSet(WebApiMixin, viewsets.ViewSet):
     # every action requires login except "guest"
     authentication_classes = [JWTAuthentication]
-    permission_classes = LOGIN_REQUIRED
 
     def get_own_booking(self, request, pk):
         # staff and admin can open any booking (confirm, cancel, edit for customers);
@@ -61,7 +60,7 @@ class BookingViewSet(viewsets.ViewSet):
             ).order_by("start_at"),
         )
         if not booking_filter.is_valid():
-            return response_errors(booking_filter.errors)
+            raise ValidationError(booking_filter.errors)
         paginator = CustomPaginator()
         page = paginator.paginate_queryset(booking_filter.qs, request)
         serializer = BookingSerializer(page, many=True)
@@ -85,8 +84,7 @@ class BookingViewSet(viewsets.ViewSet):
     @transaction.atomic
     def create(self, request):
         serializer = EditBookingSerializer(data=request.data)
-        if not serializer.is_valid():
-            return response_errors(serializer.errors)
+        serializer.is_valid(raise_exception=True)
         serializer.save(user=request.user)
         return response_success(
             BookingSerializer(serializer.instance).data,
@@ -105,8 +103,7 @@ class BookingViewSet(viewsets.ViewSet):
     @transaction.atomic
     def guest(self, request):
         serializer = GuestBookingSerializer(data=request.data)
-        if not serializer.is_valid():
-            return response_errors(serializer.errors)
+        serializer.is_valid(raise_exception=True)
         serializer.save(user=None)
         return response_success(
             BookingSerializer(serializer.instance).data,
@@ -119,13 +116,12 @@ class BookingViewSet(viewsets.ViewSet):
         detail=False,
         methods=["post"],
         url_path="staff",
-        permission_classes=[*LOGIN_REQUIRED, StaffMiddleware],
+        permission_classes=[*LOGIN_REQUIRED, IsStaff],
     )
     @transaction.atomic
     def staff(self, request):
         serializer = StaffBookingSerializer(data=request.data)
-        if not serializer.is_valid():
-            return response_errors(serializer.errors)
+        serializer.is_valid(raise_exception=True)
         serializer.save()
         return response_success(
             BookingSerializer(serializer.instance).data,
@@ -138,8 +134,7 @@ class BookingViewSet(viewsets.ViewSet):
     def update(self, request, pk=None):
         booking = self.get_own_booking(request, pk)
         serializer = EditBookingSerializer(booking, data=request.data)
-        if not serializer.is_valid():
-            return response_errors(serializer.errors)
+        serializer.is_valid(raise_exception=True)
         serializer.save()
         return response_success(
             BookingSerializer(serializer.instance).data,
@@ -153,9 +148,8 @@ class BookingViewSet(viewsets.ViewSet):
         return response_success(message="Booking deleted successfully!")
 
 
-class CalendarViewSet(viewsets.ViewSet):
+class CalendarViewSet(WebApiMixin, viewsets.ViewSet):
     authentication_classes = [JWTAuthentication]
-    permission_classes = LOGIN_REQUIRED
 
     @extend_schema(**get_booking_calendar_description)
     def list(self, request):
@@ -169,13 +163,13 @@ class CalendarViewSet(viewsets.ViewSet):
             ),
         )
         if not calendar_filter.is_valid():
-            return response_errors(calendar_filter.errors)
+            raise ValidationError(calendar_filter.errors)
 
         start_date, end_date = calendar_filter.get_calendar_range()
         bookings = calendar_filter.qs
 
         if start_date is None or end_date is None:
-            return response_errors({"start_date": ["Invalid calendar filter."]})
+            raise ValidationError({"start_date": ["Invalid calendar filter."]})
 
         days = (end_date - start_date).days + 1
         resources = Resource.objects.select_related("resource_type").order_by("name")

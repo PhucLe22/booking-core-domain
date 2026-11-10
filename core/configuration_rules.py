@@ -8,6 +8,18 @@ A field is defined with a type and optional rules, eg:
     "payment":  {"type": "string", "enum_type": "PAYMENT_METHOD"}
     "languages": {"type": "array", "item_type": "string", "choices": ["vi", "en"], "unique": true}
 
+The format of docs/web_api_spec.md (FieldDefinition, snake_case) works too: the rules can
+be grouped in "validation", select fields list their "options", and "scope" tells whether
+the value belongs to the resource (default) or to a booking, eg:
+
+    "room_size": {"type": "select", "options": [{"value": "S", "label": "Small"}]}
+    "photo":     {"type": "file", "validation": {"max_size_bytes": 2000000,
+                                                 "allowed_mime_types": ["image/*"]}}
+    "parent":    {"type": "reference",
+                  "validation": {"target_resource_type_id": "<uuid>"}}
+    "note":      {"type": "long_text", "scope": "booking",
+                  "validation": {"max_length": 500}}
+
 - check_field_definition() checks a definition when a resource type is saved
 - check_configuration() checks a resource's values against every definition
 
@@ -16,7 +28,9 @@ To support a new rule, add one entry to RULES.
 
 import copy
 import re
+import uuid
 from datetime import date, datetime, time
+from decimal import Decimal, InvalidOperation
 from typing import Any, Callable, NamedTuple
 
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -35,6 +49,32 @@ def _is_int(value):
 
 def _is_number(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _is_text(value):
+    return isinstance(value, str)
+
+
+def _is_uuid(value):
+    if not isinstance(value, str):
+        return False
+    try:
+        uuid.UUID(value)
+    except ValueError:
+        return False
+    return True
+
+
+def _is_text_list(value):
+    return isinstance(value, list) and all(isinstance(item, str) for item in value)
+
+
+def _is_uuid_list(value):
+    return isinstance(value, list) and all(_is_uuid(item) for item in value)
+
+
+# digits, spaces and + ( ) - . ; 6 to 20 characters, eg +84 912 345 678
+PHONE_PATTERN = re.compile(r"^\+?[0-9][0-9 ().-]{5,19}$")
 
 
 def _iso(parser):
@@ -75,6 +115,15 @@ FIELD_TYPES = {
     "datetime": _iso(datetime.fromisoformat),
     "email": _django_validator(EmailValidator),
     "url": _django_validator(URLValidator),
+    # types of docs/web_api_spec.md
+    "text": _is_text,
+    "long_text": _is_text,
+    "phone": lambda value: isinstance(value, str) and bool(PHONE_PATTERN.match(value)),
+    "select": _is_text,  # one value of "options"
+    "multi_select": _is_text_list,  # values of "options"
+    "reference": _is_uuid,  # id of a resource of validation.target_resource_type_id
+    "file": _is_uuid,  # id of an uploaded file (storage service)
+    "multi_file": _is_uuid_list,
 }
 
 # how a wrong value is described, eg "'opens_at' must be a time like 09:30!"
@@ -84,15 +133,33 @@ TYPE_MESSAGES = {
     "datetime": "a date and time like 2026-10-15T09:30",
     "email": "a valid email address",
     "url": "a valid URL",
+    "phone": "a phone number like +84 912 345 678",
+    "select": "one of the options",
+    "multi_select": "a list of options",
+    "reference": "the id of a resource",
+    "file": "the id of an uploaded file",
+    "multi_file": "a list of uploaded file ids",
 }
 
-TEXT_TYPES = ("string", "email", "url")
+TEXT_TYPES = ("string", "email", "url", "text", "long_text", "phone")
+FREE_TEXT_TYPES = ("string", "text", "long_text")
 NUMBER_TYPES = ("integer", "number")
 TIME_TYPES = ("date", "time", "datetime")
-ITEM_TYPES = tuple(t for t in FIELD_TYPES if t not in ("object", "array"))
+SELECT_TYPES = ("select", "multi_select")
+FILE_TYPES = ("file", "multi_file")
+# types whose value is a list
+LIST_TYPES = ("array", "multi_select", "multi_file")
+# item types of an "array" field (the spec list types have fixed items)
+ITEM_TYPES = (
+    "string", "integer", "number", "boolean", "date", "time", "datetime", "email", "url",
+)
 
 # keys of a definition that are not rules
-BASE_KEYS = {"type", "required", "default", "label", "help", "item_type"}
+BASE_KEYS = {
+    "type", "required", "default", "label", "help", "item_type", "scope", "validation",
+}
+# where the value of a field is kept (docs/web_api_spec.md FieldDefinition.scope)
+SCOPES = ("resource", "booking")
 
 
 def type_error(name, field_type):
@@ -171,7 +238,7 @@ def _check_pattern_definition(rule_value, field, name):
 
 def _items(value, field):
     """Values the item rules apply to: the items of an array, or the value itself."""
-    return value if field["type"] == "array" else [value]
+    return value if field["type"] in LIST_TYPES else [value]
 
 
 def _check_choices_definition(rule_value, field, name):
@@ -241,6 +308,119 @@ def _length(check, message):
     return run
 
 
+def _check_multiple_of_definition(rule_value, field, name):
+    if not _is_number(rule_value) or rule_value <= 0:
+        return f"'{name}.multiple_of' must be a number greater than 0!"
+    return None
+
+
+def _check_multiple_of(value, rule_value, field, name):
+    try:
+        remainder = Decimal(str(value)) % Decimal(str(rule_value))
+    except InvalidOperation:
+        return f"'{name}' must be a multiple of {rule_value}!"
+    return None if remainder == 0 else f"'{name}' must be a multiple of {rule_value}!"
+
+
+def _check_options_definition(rule_value, field, name):
+    if not isinstance(rule_value, list) or not rule_value:
+        return f"'{name}.options' must be a non-empty list!"
+    values = []
+    for option in rule_value:
+        if (
+            not isinstance(option, dict)
+            or not isinstance(option.get("value"), str)
+            or not option["value"]
+            or not isinstance(option.get("label", ""), str)
+        ):
+            return (
+                f"Every option of '{name}' must be like "
+                '{"value": "S", "label": "Small"}!'
+            )
+        values.append(option["value"])
+    if len(set(values)) != len(values):
+        return f"'{name}.options' has duplicate values!"
+    return None
+
+
+def _check_options(value, rule_value, field, name):
+    values = [option["value"] for option in rule_value]
+    for item in _items(value, field):
+        if item not in values:
+            return f"'{name}' must be one of: {', '.join(values)}!"
+    return None
+
+
+def _check_target_resource_type_definition(rule_value, field, name):
+    from core.models import ResourceType
+
+    if not _is_uuid(rule_value):
+        return f"'{name}.target_resource_type_id' must be the id of a resource type!"
+    if not ResourceType.objects.filter(pk=rule_value).exists():
+        return f"Resource type '{rule_value}' does not exist!"
+    return None
+
+
+def _check_target_resource_type(value, rule_value, field, name):
+    from core.models import Resource
+
+    if not Resource.objects.filter(pk=value, resource_type_id=rule_value).exists():
+        return f"'{name}' must be a resource of the selected resource type!"
+    return None
+
+
+def _stored_files(ids):
+    from core.models import StoredFile
+
+    return list(StoredFile.objects.filter(pk__in=ids))
+
+
+def _check_files_exist(value, field, name):
+    ids = {str(item) for item in _items(value, field)}
+    found = {str(stored.pk) for stored in _stored_files(ids)}
+    if ids - found:
+        return f"'{name}' must be the id of an uploaded file!"
+    return None
+
+
+def _check_max_size(value, rule_value, field, name):
+    for stored in _stored_files(_items(value, field)):
+        if stored.size_bytes > rule_value:
+            return f"'{name}' cannot be larger than {rule_value} bytes!"
+    return None
+
+
+def _check_mime_types_definition(rule_value, field, name):
+    if (
+        not isinstance(rule_value, list)
+        or not rule_value
+        or not all(isinstance(item, str) and "/" in item for item in rule_value)
+    ):
+        return (
+            f"'{name}.allowed_mime_types' must be a list like "
+            '["image/png", "image/*"]!'
+        )
+    return None
+
+
+def _mime_allowed(mime_type, allowed):
+    mime_type = (mime_type or "").lower()
+    for pattern in allowed:
+        pattern = pattern.lower()
+        if pattern.endswith("/*") and mime_type.startswith(pattern[:-1]):
+            return True
+        if mime_type == pattern:
+            return True
+    return False
+
+
+def _check_mime_types(value, rule_value, field, name):
+    for stored in _stored_files(_items(value, field)):
+        if not _mime_allowed(stored.mime_type, rule_value):
+            return f"'{name}' must be a file of type: {', '.join(rule_value)}!"
+    return None
+
+
 RULES = {
     "min": Rule(NUMBER_TYPES + TIME_TYPES, _same_type_as_field("min"), _check_min),
     "max": Rule(NUMBER_TYPES + TIME_TYPES, _same_type_as_field("max"), _check_max),
@@ -255,25 +435,52 @@ RULES = {
         _length(lambda n, r: n > r, lambda name, r: f"'{name}' cannot exceed {r} characters!"),
     ),
     "pattern": Rule(
-        ("string",),
+        FREE_TEXT_TYPES,
         _check_pattern_definition,
         lambda value, rule_value, field, name: (
             None if re.fullmatch(rule_value, value) else f"'{name}' has an invalid format!"
         ),
     ),
-    "choices": Rule(("string", "integer", "number", "array"), _check_choices_definition, _check_choices),
-    "enum_type": Rule(("string", "array"), _check_enum_type_definition, _check_enum_type),
+    "choices": Rule(
+        ("string", "text", "integer", "number", "array"),
+        _check_choices_definition,
+        _check_choices,
+    ),
+    "enum_type": Rule(
+        ("string", "text", "array") + SELECT_TYPES,
+        _check_enum_type_definition,
+        _check_enum_type,
+    ),
     "min_items": Rule(
-        ("array",),
+        LIST_TYPES,
         _whole_number("min_items"),
         _length(lambda n, r: n < r, lambda name, r: f"'{name}' needs at least {r} items!"),
     ),
     "max_items": Rule(
-        ("array",),
+        LIST_TYPES,
         _whole_number("max_items"),
         _length(lambda n, r: n > r, lambda name, r: f"'{name}' can have at most {r} items!"),
     ),
-    "unique": Rule(("array",), _check_unique_definition, _check_unique),
+    "unique": Rule(LIST_TYPES, _check_unique_definition, _check_unique),
+    # rules of docs/web_api_spec.md
+    "multiple_of": Rule(NUMBER_TYPES, _check_multiple_of_definition, _check_multiple_of),
+    "options": Rule(SELECT_TYPES, _check_options_definition, _check_options),
+    "target_resource_type_id": Rule(
+        ("reference",),
+        _check_target_resource_type_definition,
+        _check_target_resource_type,
+    ),
+    "max_size_bytes": Rule(FILE_TYPES, _whole_number("max_size_bytes"), _check_max_size),
+    "allowed_mime_types": Rule(
+        FILE_TYPES, _check_mime_types_definition, _check_mime_types
+    ),
+}
+
+# rules a type cannot do without: type -> (rules, one of them is needed)
+REQUIRED_RULES = {
+    "select": ("options", "enum_type"),
+    "multi_select": ("options", "enum_type"),
+    "reference": ("target_resource_type_id",),
 }
 
 # rules that must not cross: (low, high)
@@ -285,8 +492,23 @@ RULE_PAIRS = [("min", "max"), ("min_length", "max_length"), ("min_items", "max_i
 # =========================================================
 
 
+def flat_definition(field):
+    """
+    The definition with the rules of "validation" moved to the top level, eg
+    {"type": "text", "validation": {"max_length": 5}}
+    -> {"type": "text", "max_length": 5}.
+    """
+    validation = field.get("validation")
+    if not isinstance(validation, dict):
+        return field
+    flat = {key: value for key, value in field.items() if key != "validation"}
+    flat.update(validation)
+    return flat
+
+
 def check_value(name, value, field):
     """Return the first error of one value against its field definition, or None."""
+    field = flat_definition(field)
     field_type = field.get("type")
     if field_type not in FIELD_TYPES:
         return None
@@ -297,6 +519,11 @@ def check_value(name, value, field):
     if field_type == "array" and item_type in FIELD_TYPES:
         if not all(FIELD_TYPES[item_type](item) for item in value):
             return f"Every item of '{name}' must be {TYPE_MESSAGES.get(item_type, 'of type ' + item_type)}!"
+
+    if field_type in FILE_TYPES:
+        message = _check_files_exist(value, field, name)
+        if message:
+            return message
 
     for key, rule_value in field.items():
         rule = RULES.get(key)
@@ -319,7 +546,25 @@ def check_field_definition(name, field):
             f"Allowed types: {', '.join(FIELD_TYPES)}."
         ]
 
+    validation = field.get("validation", {})
+    if not isinstance(validation, dict):
+        return [f"'{name}.validation' must be an object!"]
+    twice = sorted(set(validation) & (set(field) - {"validation"}))
+    if twice:
+        return [
+            f"'{name}' sets {', '.join(twice)} twice (in the field and in validation)!"
+        ]
+    for key in validation:
+        if key in BASE_KEYS:
+            return [f"'{name}.validation' cannot hold '{key}'!"]
+    field = flat_definition(field)
+
     errors = []
+    if field.get("scope", "resource") not in SCOPES:
+        errors.append(f"'{name}.scope' must be one of: {', '.join(SCOPES)}!")
+    needed = REQUIRED_RULES.get(field_type)
+    if needed and not any(key in field for key in needed):
+        errors.append(f"'{name}' needs {' or '.join(needed)}!")
     if not isinstance(field.get("required", False), bool):
         errors.append(f"'{name}.required' must be true or false!")
     for key in ("label", "help"):
@@ -353,6 +598,8 @@ def check_field_definition(name, field):
                 errors.append(f"'{name}.{low}' cannot be greater than '{name}.{high}'!")
     if "choices" in field and "enum_type" in field:
         errors.append(f"'{name}' can use choices or enum_type, not both!")
+    if "options" in field and "enum_type" in field:
+        errors.append(f"'{name}' can use options or enum_type, not both!")
 
     if not errors and "default" in field:
         message = check_value(name, field["default"], field)
@@ -361,13 +608,20 @@ def check_field_definition(name, field):
     return errors
 
 
-def check_configuration(configuration, schema):
+def check_configuration(configuration, schema, scope="resource"):
     """
     Check a resource configuration against the "fields" of its resource type.
+    Only the fields of `scope` are used: "resource" (default) for a resource,
+    "booking" for the values of a booking.
     Missing fields with a default get that default.
     Return (configuration with defaults, {field: [message]} errors).
     """
-    fields = (schema or {}).get("fields") or {}
+    all_fields = (schema or {}).get("fields") or {}
+    fields = {
+        name: field
+        for name, field in all_fields.items()
+        if (field or {}).get("scope", "resource") == scope
+    }
     result = dict(configuration or {})
     errors = {}
 
@@ -386,7 +640,12 @@ def check_configuration(configuration, schema):
             errors[name] = [message]
 
     for name in result:
-        if name not in fields:
+        if name in fields:
+            continue
+        if name in all_fields:
+            other = (all_fields[name] or {}).get("scope", "resource")
+            errors[name] = [f"'{name}' is filled in on the {other}, not here!"]
+        else:
             errors[name] = [f"'{name}' is not a valid field for this resource type!"]
 
     return result, errors
