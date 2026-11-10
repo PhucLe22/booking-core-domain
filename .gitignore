@@ -150,3 +150,11 @@ cython_debug/
 
 **/*_pb2_grpc.py
 **/*_pb2.py
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# IDE
+.idea/
+.vscode/
