@@ -143,9 +143,16 @@ Máy local chưa cài Django trong `.venv` → chạy kiểm tra trong container
   - `core/migrations/0009_booking_history_applied_config.py`: booking có sẵn được điền `updated_at = created_at`
     và 1 dòng history ban đầu (trạng thái hiện tại, actor là user đặt, booking guest thì `system`).
   - Chưa ghi history khi tạo/đổi trạng thái booking – làm ở 2.10 (`Booking.change_status`) và 2.11.
-- [ ] **2.9** Mở rộng lên 9 trạng thái: migration seed thêm vào enum `BOOKING_STATUS`, chuyển dữ liệu
+- [x] **2.9** Mở rộng lên 9 trạng thái: migration seed thêm vào enum `BOOKING_STATUS`, chuyển dữ liệu
       `PENDING` → `PENDING_APPROVAL`.
-  - `core/migrations/0009_seed_booking_statuses.py`
+  - `core/migrations/0010_seed_booking_statuses.py`: đổi code dòng `PENDING` thành `PENDING_APPROVAL` (giữ id nên
+    booking và history vẫn trỏ đúng), thêm `AWAITING_PAYMENT`, `CHECKED_IN`, `EXPIRED`, `REJECTED`, `NO_SHOW`
+    (value 5–9, thứ tự theo spec). Rollback xóa giá trị mới chưa dùng, đổi lại `PENDING`.
+  - `core/constant.py` (`BookingStatus` đủ 9 code; `BOOKING_TRANSITIONS` chỉ đổi tên `PENDING` – bảng đầy đủ ở 2.10)
+  - `core/serializers/booking_serializers.py`: giữ slot khi `AWAITING_PAYMENT`, `PENDING_APPROVAL`, `CONFIRMED`,
+    `CHECKED_IN`; booking mới chỉ được `PENDING_APPROVAL` hoặc `CONFIRMED`.
+  - `core/querysets.py`: calendar ẩn `CANCELLED`, `REJECTED`, `EXPIRED`.
+  - Ghi chú: client gửi `status: "pending"` giờ nhận 422 – phải gửi `pending_approval`.
 - [ ] **2.10** Logic chuyển trạng thái theo spec, dùng chung cho API và timer: sửa bảng `BOOKING_TRANSITIONS` có sẵn;
       thêm method `Booking.change_status(to_status, actor, reason=None)` đổi trạng thái + ghi `BookingHistory`;
       sai trạng thái → lỗi code `invalid_transition` (409).

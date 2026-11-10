@@ -11,6 +11,7 @@ from core.constant import (
     FIELD_ORDER,
     KEY_PATTERN,
     KEY_PATTERN_MESSAGE,
+    NOT_RESOURCE_STATUS_TYPES,
     ResourceStatus,
 )
 from core.models import EnumType, Resource, ResourceType
@@ -325,6 +326,14 @@ class EditResourceTypeSerializer(serializers.ModelSerializer):
             if not isinstance(status_type, str) or not EnumType.objects.filter(code=status_type).exists():
                 raise serializers.ValidationError(
                     {"status_enum_type": [f"Master data list '{status_type}' does not exist!"]}
+                )
+            if status_type in NOT_RESOURCE_STATUS_TYPES:
+                raise serializers.ValidationError(
+                    {
+                        "status_enum_type": [
+                            f"{status_type} is not a list of resource statuses!"
+                        ]
+                    }
                 )
 
         # type, required and every rule of each field (see core/configuration_rules.py)

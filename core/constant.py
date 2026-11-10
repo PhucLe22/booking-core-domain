@@ -118,6 +118,8 @@ SYSTEM_ENUM_TYPES = ["RESOURCE_STATUS", "BOOKING_STATUS", "NOTIFICATION_TYPE"]
 # master data list a resource type takes its resource statuses from, unless
 # ResourceType.configuration["status_enum_type"] names another list
 DEFAULT_RESOURCE_STATUS_TYPE = "RESOURCE_STATUS"
+# system lists that are not resource statuses: a resource type cannot use them
+NOT_RESOURCE_STATUS_TYPES = ["BOOKING_STATUS", "NOTIFICATION_TYPE"]
 
 # key of a resource type and of its custom fields (docs/web_api_spec.md),
 # eg phone_booth, has_phone_charger
@@ -140,11 +142,17 @@ class ResourceStatus:
     MAINTENANCE = "MAINTENANCE"
 
 
+# codes of the BOOKING_STATUS values (docs/web_api_spec.md, seeded by migration 0010)
 class BookingStatus:
-    PENDING = "PENDING"
+    AWAITING_PAYMENT = "AWAITING_PAYMENT"
+    PENDING_APPROVAL = "PENDING_APPROVAL"
     CONFIRMED = "CONFIRMED"
-    CANCELLED = "CANCELLED"
+    CHECKED_IN = "CHECKED_IN"
     COMPLETED = "COMPLETED"
+    EXPIRED = "EXPIRED"
+    REJECTED = "REJECTED"
+    CANCELLED = "CANCELLED"
+    NO_SHOW = "NO_SHOW"
 
 
 # who changed the status of a booking (BookingHistory.actor_type, docs/web_api_spec.md)
@@ -156,8 +164,9 @@ class BookingActorType:
 
 
 # allowed booking status changes: current status -> statuses it can move to
+# (the transitions of the new statuses come with the booking actions, task 2.10)
 BOOKING_TRANSITIONS = {
-    BookingStatus.PENDING: [BookingStatus.CONFIRMED, BookingStatus.CANCELLED],
+    BookingStatus.PENDING_APPROVAL: [BookingStatus.CONFIRMED, BookingStatus.CANCELLED],
     BookingStatus.CONFIRMED: [BookingStatus.CANCELLED, BookingStatus.COMPLETED],
     BookingStatus.CANCELLED: [],
     BookingStatus.COMPLETED: [],

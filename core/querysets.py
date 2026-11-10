@@ -10,5 +10,11 @@ class UserQuerySet(models.QuerySet):
 
 class BookingQuerySet(models.QuerySet):
     def displayable(self):
-        """Bookings that are shown on the calendar (not cancelled)."""
-        return self.exclude(status__code=BookingStatus.CANCELLED)
+        """Bookings shown on the calendar: not cancelled, rejected or expired."""
+        return self.exclude(
+            status__code__in=[
+                BookingStatus.CANCELLED,
+                BookingStatus.REJECTED,
+                BookingStatus.EXPIRED,
+            ]
+        )

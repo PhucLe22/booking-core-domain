@@ -6,9 +6,14 @@ from core.models import Booking, Resource, User
 from .fields import CodeRelatedField, enum_values
 
 # bookings in these statuses hold their time slot
-ACTIVE_BOOKING_STATUSES = [BookingStatus.PENDING, BookingStatus.CONFIRMED]
+ACTIVE_BOOKING_STATUSES = [
+    BookingStatus.AWAITING_PAYMENT,
+    BookingStatus.PENDING_APPROVAL,
+    BookingStatus.CONFIRMED,
+    BookingStatus.CHECKED_IN,
+]
 # a new booking can only start in one of these statuses
-INITIAL_BOOKING_STATUSES = [BookingStatus.PENDING, BookingStatus.CONFIRMED]
+INITIAL_BOOKING_STATUSES = [BookingStatus.PENDING_APPROVAL, BookingStatus.CONFIRMED]
 DEFAULT_BOOKING_STATUS = BookingStatus.CONFIRMED
 
 
@@ -160,7 +165,11 @@ class EditBookingSerializer(serializers.ModelSerializer):
                     )
             elif new_status.code not in INITIAL_BOOKING_STATUSES:
                 raise serializers.ValidationError(
-                    {"status": ["A new booking can only be Pending or Confirmed!"]}
+                    {
+                        "status": [
+                            "A new booking can only be Pending approval or Confirmed!"
+                        ]
+                    }
                 )
             return new_status
 
